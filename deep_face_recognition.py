@@ -26,8 +26,6 @@ class FaceRecognitionSystem:
         if image is None:
             return None
         image_rgb = image.copy()
-        cv2.imwrite("image_rgb001.png", image_rgb)
-        print("Image RGB saved as image_rgb001.png")
         detections = self.detector.detect_faces(image_rgb)
 
         if len(detections) == 0:
@@ -37,8 +35,53 @@ class FaceRecognitionSystem:
         x, y, w, h = detection['box']
         face = image_rgb[y:y+h, x:x+w]
         face = cv2.resize(face, target_size)
-        cv2.imwrite("face_detected001.png", face)
         return face
+
+    def detect_face_live(self, index=0, target_size=(224, 224)):
+        """
+        Webcam orqali yuzni aniqlash va ajratib olish (professional oval chizish bilan)
+        """
+        cap = cv2.VideoCapture(index)
+        if not cap.isOpened():
+            raise ValueError("Webcam ochilmadi")
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            detections = self.detector.detect_faces(frame_rgb)
+
+            if len(detections) == 0:
+                cv2.putText(frame_rgb, "Yuz aniqlanmadi", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            else:
+                for detection in detections:
+                    x, y, w, h = detection['box']
+                    confidence = detection['confidence']
+                    margin = 10
+                    center_coordinates = (x + w // 2, y + h // 2)
+                    axes_length = (w // 2 + margin, h // 2 + margin)
+
+                    if confidence > 0.9:
+                        color = (0, 255, 0)
+                    else:
+                        color = (0, 0, 255)
+                    cv2.ellipse(frame_rgb, center_coordinates, axes_length,
+                                angle=0, startAngle=0, endAngle=360,
+                                color=color, thickness=2)
+
+                    face = frame_rgb[y:y + h, x:x + w]
+
+            cv2.imshow('Face Detection (Oval)', cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+
 
     def extract_features(self, face_image):
         """
@@ -160,7 +203,6 @@ class FaceRecognitionSystem:
             raise ValueError("Model avval o'qitilishi yoki yuklanishi kerak")
         
         face = self.detect_and_extract_face(image_path)
-        plt.savefig("face_detected.png")
         if face is None:
             return None, None, "Yuz aniqlanmadi"
         
@@ -176,11 +218,11 @@ class FaceRecognitionSystem:
         max_prob = np.max(probability)
         
         if max_prob < threshold:
-            return None, max_prob, "Noma'lum shaxs"
+            return None, max_prob, "Unknown"
         
         predicted_person = self.reverse_label_encoder[prediction]
         
-        return predicted_person, max_prob, "Muvaffaqiyatli"
+        return predicted_person, max_prob, "Success"
     
     def predict_realtime(self, threshold=0.5):
         """
@@ -188,7 +230,7 @@ class FaceRecognitionSystem:
         """
         if self.model is None:
             raise ValueError("Model avval o'qitilishi yoki yuklanishi kerak")
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(2)
         print("Real-time prediction boshlandi. 'q' tugmasi bilan chiqing.")
         
         while True:
@@ -197,12 +239,9 @@ class FaceRecognitionSystem:
                 break
             
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
             detections = self.detector.detect_faces(frame_rgb)
-            
             for detection in detections:
                 x, y, w, h = detection['box']
-                
                 face = frame_rgb[y:y+h, x:x+w]
                 face_resized = cv2.resize(face, (224, 224))
                 
@@ -224,9 +263,7 @@ class FaceRecognitionSystem:
                     cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
                     cv2.putText(frame, label, (x, y-10), 
                               cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-            
             cv2.imshow('Face Recognition', frame)
-            
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         
@@ -235,7 +272,8 @@ class FaceRecognitionSystem:
 
 if __name__ == "__main__":
     fr_system = FaceRecognitionSystem()
-    # dataset_path = "facerec_datasets/Dataset/Faces"  
+    fr_system.detect_face_live(index=2, target_size=(224, 224))
+    # dataset_path = "Dataset/Faces"  
     # model_path = "models/deep_face_recognition_model.pkl"
     
     # print("Model o'qitilmoqda...")
@@ -243,7 +281,7 @@ if __name__ == "__main__":
     
     # fr_system.save_model(model_path)
     
-    # test_image = "tests/akshay-kumar-20191210145129-78.jpg" 
+    # test_image = "tests/photo_allamurod.jpg" 
     # predicted_person, probability, status = fr_system.predict_image(test_image)
     # print(f"\nTest natijasi:")
     # print(f"Bashorat: {predicted_person}")
@@ -251,23 +289,13 @@ if __name__ == "__main__":
     # print(f"Status: {status}")
 
     # Real-time prediction
+    # model_path = "models/deep_face_recognition_model.pkl"
+    # fr_system.load_model(model_path)
     # fr_system.predict_realtime()
-    model_path = "models/deep_face_recognition_model.pkl"
-    fr_system_loaded = FaceRecognitionSystem()
-    fr_system_loaded.load_model(model_path)
-    predicted_person, probability, status = fr_system_loaded.predict_image("tests/alexandra-daddario-2022-noms-450x600.jpg")
-    print(f"Bashorat: {predicted_person}, Ehtimollik: {probability:.4f}")
-    print(f"Status: {status}")
 
-    # predicted_person, probability, status = fr_system_loaded.predict_image("tests/alexandra-daddario-2022-noms-450x600.jpg")
-    # print(f"Bashorat: {predicted_person}, Ehtimollik: {probability:.4f}")
+    # model_path = "models/deep_face_recognition_model.pkl"
+    # fr_system_loaded = FaceRecognitionSystem()
+    # fr_system_loaded.load_model(model_path)
+    # predicted_person, probability, status = fr_system_loaded.predict_image("tests/photo_2025-07-05_17-13-03.jpg")
+    # print(f"Bashorat: {predicted_person}, Ehtimollik: {probability}")
     # print(f"Status: {status}")
-    """
-    # Avval saqlangan modelni yuklash
-    fr_system_loaded = FaceRecognitionSystem()
-    fr_system_loaded.load_model(model_path)
-    
-    # Bashorat qilish
-    predicted_person, probability, status = fr_system_loaded.predict_image("new_test_image.jpg")
-    print(f"Bashorat: {predicted_person}, Ehtimollik: {probability:.4f}")
-    """
